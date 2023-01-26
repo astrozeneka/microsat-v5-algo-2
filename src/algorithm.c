@@ -3,9 +3,8 @@
 #include <stdlib.h>
 
 #define SEQ_RECORD_MEMORY_CHUNK 40
-#define SEQ_SEQUENCE_MEMORY_CHUNK 409600
-#define SEQ_MICROSATELLITE_MEMORY_CHUNK 6400
-
+#define SEQ_SEQUENCE_MEMORY_CHUNK 4096
+#define SEQ_MICROSATELLITE_MEMORY_CHUNK 64
 // Sequence stucture
 
 typedef struct {
@@ -16,13 +15,14 @@ typedef struct {
 
 void initSequence(sequence *a, size_t initialSize){
     // Structure memory allocation will be outside
-    a->array = malloc(initialSize * sizeof(char));
+    a->array = malloc(initialSize * sizeof(char) +1);
     a->used = 0;
-    a->size = 0;
+    a->size = initialSize;
+    a->array[a->used+1] == 0;
 }
 
 void insertSequence(sequence *a, char element){
-    if (a->used == a->size){
+    if (a->used+1 == a->size){
         a->size += SEQ_SEQUENCE_MEMORY_CHUNK;
         a->array = realloc(a->array, a->size * sizeof(char));
     }
@@ -41,6 +41,36 @@ typedef struct {
     sequence *sequence;
 } record;
 
+typedef struct {
+    char *sequence;
+    char *motif;
+    int period;
+    int repeat;
+    int start;
+    int end;
+    int length;
+} microsatellite;
+
+typedef struct {
+    microsatellite *array;
+    size_t used;
+    size_t size;
+} microsatelliteArray;
+
+void initMicrosatelliteArray(microsatelliteArray *a, size_t initialSize){
+    a->array = malloc(initialSize * sizeof(microsatellite));
+    a->used = 0;
+    a->size = initialSize;
+}
+
+void insertMicrosatelliteArray(microsatelliteArray *a, microsatellite *element){
+    if (a->used == a->size){
+        a->size += SEQ_MICROSATELLITE_MEMORY_CHUNK;
+        a->array = realloc(a->array, a->size*sizeof(microsatellite));
+    }
+    a->array[a->used++] = *element;
+}
+
 void readConfig(int *output, FILE *f){
     char x[8];
     int cursor=0;
@@ -52,8 +82,11 @@ void readConfig(int *output, FILE *f){
     int a = 0;
 }
 
-void readFastaFile(FILE *f){
-    record *output = malloc(sizeof(record));
+void readFastaFile(record *output, FILE *f){
+    // IMPORTANT, should initialize structure after creating
+    output->name=NULL;
+    output->description=NULL;
+    output->sequence=malloc(sizeof(sequence)); // NULL
     initSequence(output->sequence, SEQ_RECORD_MEMORY_CHUNK); // THIS SHOULD BE THE BUG FIX
 
     char buffer[4096];
@@ -72,9 +105,72 @@ void readFastaFile(FILE *f){
         strtok(line, "\n");
 
         if(line[0] == '>'){
-            int b = 0;
+            char *x = malloc(64);
+            sscanf(line, "%63s", x);
+            output->name = malloc(64*sizeof(char));
+            output->description = malloc(1024*sizeof(char));
+            strcpy(output->name, x);
+            output->name[strlen(x)] = 0;
+            strcpy(output->description, line+strlen(x));
         }else{
-            int a = 0;
+            // Fasta reads
+            for(int i = 0; line[i] != 0; i++)
+                insertSequence(output->sequence, line[i]);
+        }
+    }
+}
+
+void search_perfect_microsatellites(microsatelliteArray *output, record *record, int *minRepeats){
+    char *seq = record->sequence->array;
+    size_t len;
+    int start;
+    int length;
+    int repeat;
+    int i;
+    int j;
+    char motif[7] = "\0";
+
+    len = record->sequence->used;
+    for (i=0; i<len; i++){
+        if (seq[i] == 78)
+            continue;
+        if (seq[i] != 'A' && seq[i] != 'T' && seq[i] != 'C' && seq[i] != 'G') {
+            char *n = malloc(1000000);
+            strncpy(n, seq+i, 100);
+            continue;
+        }
+        for (j=1; j<=6; j++){
+            start = i;
+            length=j;
+            while(start+length<len && seq[i]==seq[i+j] && seq[i]!=78){
+                i++;
+                length++;
+            }
+            repeat=length/j;
+            if(repeat >= minRepeats[j - 1]){
+                microsatellite *m = malloc(sizeof(microsatellite));
+
+                m->motif = malloc(16*sizeof(char));
+                strncpy(m->motif, seq+start, j);
+                m->motif[j] = 0;
+
+                m->sequence=malloc(64*sizeof(char));
+                strcpy(m->sequence, record->name);
+
+                m->period=j;
+                m->repeat=repeat;
+                m->start=start+1;
+                m->end=start+length;
+                m->length=repeat*j;
+
+                insertMicrosatelliteArray(output, m);
+                free(m);
+
+                i=start+length;
+                j=0;
+            }else{
+                i=start;
+            }
         }
     }
 }
@@ -103,12 +199,35 @@ int main(int argc, char **argv){
         readConfig(minRepeats,  fptr);
     }
 
+    microsatelliteArray *microsatellites;
     if(infile != NULL){
         FILE *fptr;
         fptr = fopen(infile, "r");
 
-        readFastaFile(fptr);
+        record *record=malloc(sizeof(record));
+        readFastaFile(record, fptr);
 
+        microsatellites=malloc(sizeof(microsatelliteArray));
+        initMicrosatelliteArray(microsatellites, SEQ_MICROSATELLITE_MEMORY_CHUNK);
+        search_perfect_microsatellites(microsatellites, record, minRepeats);
     }
 
+    if(outfile != NULL){
+        FILE *fptr;
+        fptr = fopen(outfile, "w");
+
+        for(int i = 0; i < microsatellites->used; i++){
+            fprintf(fptr, "%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
+                    microsatellites->array[i].sequence,
+                    microsatellites->array[i].motif,
+                    microsatellites->array[i].period,
+                    microsatellites->array[i].repeat,
+                    microsatellites->array[i].start,
+                    microsatellites->array[i].end,
+                    microsatellites->array[i].length);
+        }
+        fclose(fptr);
+        printf("File written\n");
+    }
+    return 0;
 }
