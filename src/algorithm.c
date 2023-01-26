@@ -114,7 +114,8 @@ void readFastaFile(record *output, FILE *f){
             strcpy(output->description, line+strlen(x));
         }else{
             // Fasta reads
-            for(int i = 0; line[i] != 0; i++)
+            int i;
+            for(i = 0; line[i] != 0; i++)
                 insertSequence(output->sequence, line[i]);
         }
     }
@@ -180,8 +181,8 @@ int main(int argc, char **argv){
     const char *infile = NULL;
     const char *outfile = NULL;
     const char *configfile = NULL;
-
-    for(int i = 1; i < argc; i++){
+    int i;
+    for(i = 1; i < argc; i++){
         if(strcmp(argv[i-1], "-i") == 0)
             infile = argv[i];
         if(strcmp(argv[i-1], "-o") == 0)
@@ -216,7 +217,8 @@ int main(int argc, char **argv){
         FILE *fptr;
         fptr = fopen(outfile, "w");
 
-        for(int i = 0; i < microsatellites->used; i++){
+        int i;
+        for(i = 0; i < microsatellites->used; i++){
             fprintf(fptr, "%s\t%s\t%d\t%d\t%d\t%d\t%d\n",
                     microsatellites->array[i].sequence,
                     microsatellites->array[i].motif,
