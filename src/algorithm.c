@@ -136,7 +136,7 @@ void search_perfect_microsatellites(microsatelliteArray *output, record *record,
         if (seq[i] == 78)
             continue;
         if (seq[i] != 'A' && seq[i] != 'T' && seq[i] != 'C' && seq[i] != 'G') {
-            char *n = malloc(1000000);
+            char *n = malloc(128);
             strncpy(n, seq+i, 100);
             continue;
         }
